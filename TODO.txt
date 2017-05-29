@@ -2,5 +2,4 @@
 2. compatibility check
 3. check overrided functions in various versions
 4. add correct chest open/close anim
-5. add another option to choose take from chest first or inv first
-6. if cannot build, take the item away from the user (shouldn't be needed)
+5. if cannot craft, take the item away from the user (shouldn't be needed)

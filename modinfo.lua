@@ -1,12 +1,12 @@
 name = 'Craft from chest'
-description = 'Automatcally use necessary items from nearby containers'
+description = 'When crafting items, ingredients are automatically obtained from nearby containers. No manually searching for necessary items anymore! '
 author = 'fredwangwang'
 version = '0.0.1'
 forumthread = ''
 api_version = 6
 priority = 1
 dont_starve_compatible = true
-reign_of_giants_compatible = true
+reign_of_giants_compatible = false
 shipwrecked_compatible = false
 
 -- dst_compatible = true
@@ -30,11 +30,21 @@ configuration_options = {
     {
         name = "is_inv_first",
         label = "Take from: ",
-        options = 
+        options =
         {
             {description = "Inv first", data = true},
             {description = "Chest first", data = false},
         },
         default = true
-    }
+    },
+    {
+        name = "debug",
+        label = "Debug msg",
+        options =
+        {
+            {description = "Enable", data = true},
+            {description = "Disable", data = false},
+        },
+        default = false
+    },
 }

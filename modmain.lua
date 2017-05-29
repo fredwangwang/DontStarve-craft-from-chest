@@ -1,8 +1,9 @@
 local _G = GLOBAL
 
+local DeBuG = GetModConfigData("debug")
 local range = GetModConfigData("range")
 local inv_first = GetModConfigData("is_inv_first")
-local c = {r = 0, g = 0.5, b = 0}
+local c = {r = 0, g = 0.3, b = 0}
 
 local Builder = _G.require 'components/builder'
 local Highlight = _G.require 'components/highlight'
@@ -11,7 +12,7 @@ local RecipePopup = _G.require 'widgets/recipepopup'
 local TabGroup = _G.require 'widgets/tabgroup'
 local CraftSlot = _G.require 'widgets/craftslot'
 
-local highlit = {} -- tracking what is highlighted
+local highlit = {}-- tracking what is highlighted
 local consumedChests = {}
 local nearbyChests = {}
 local validChests = {}
@@ -21,20 +22,41 @@ local TEASER_SCALE_BTN = 1.5
 
 local function isTable(t) return type(t) == 'table' end
 
+local function unhighlight(highlit)
+    while #highlit > 0 do
+        local v = table.remove(highlit)
+        if v and v.components.highlight then
+            v.components.highlight:UnHighlight()
+        end
+    end
+end
+
+local function highlight(insts, highlit)
+    for k, v in pairs(insts) do
+        if not v.components.highlight then v:AddComponent('highlight') end
+        if v.components.highlight then
+            v.components.highlight:Highlight(c.r, c.g, c.b)
+            table.insert(highlit, v)
+        end
+    end
+end
+
 -- given the list of instances, return the list of instances of chest
 local function filterChest(inst)
     local chest = {}
     for k, v in pairs(inst) do
-        if (v and v.components.container) then
-            table.insert(chest, v)
+        if (v and v.components.container and v.components.container.type) then
+            if string.find(v.components.container.type, 'chest') ~= nil then
+                table.insert(chest, v)
+            end
         end
     end
     return chest
 end
 
 -- given the player, return the chests close to the player
-local function getNearbyChest(owner, dist = 0)
-    if dist == 0  then dist = range end
+local function getNearbyChest(owner, dist)
+    if dist == nil then dist = range end
     local x, y, z = owner.Transform:GetWorldPosition()
     local inst = _G.TheSim:FindEntities(x, y, z, dist, {}, {'NOBLOCK', 'player', 'FX'}) or {}
     return filterChest(inst)
@@ -66,12 +88,14 @@ local function findFromNearbyChests(player, item)
 end
 
 local function removeFromNearbyChests(owner, item, amt)
-    local chests = getNearbyChest(owner)
+    consumedChests = {}-- clear consumed chests
+    local chests = getNearbyChest(owner, range + 3)-- extend the range a little bit, avoid error caused by slight player movement
+    local numItemsFound = 0
     for k, v in pairs(chests) do
         local container = v.components.container
         found, num_found = container:Has(item, 1)
         if found then
-            print('foundCorrectChest')
+            numItemsFound = numItemsFound + num_found
             table.insert(consumedChests, v)
             if (amt > num_found) then -- not enough
                 container:ConsumeByName(item, num_found)
@@ -83,53 +107,52 @@ local function removeFromNearbyChests(owner, item, amt)
             end
         end
     end
-    
-    if (amt > 0) then
-        print("cannot produce, do one more round")
-        removeFromValidChests(owner, getNearbyChest(owner), item, amt)
-    end
+    if DeBuG then print('Found ' .. numItemsFound .. item .. ' from ' .. #consumedChests .. ' chests') end
+    if amt == 0 then return true, 0
+    else return false, amt end
 end
 
-
-local function unhighlight(highlit)
-    while #highlit > 0 do
-        local v = table.remove(highlit)
-        if v and v.components.highlight then
-            v.components.highlight:UnHighlight()
+local function playerConsumeByName(player, item, amt)
+    if not (player and item and amt) then return false end
+    local inventory = player.components.inventory
+    if inv_first then
+        found_inv, num_in_inv = inventory:Has(item, 1)
+        if amt < num_found_inv then
+            -- there are more resources available in inv then needed
+            inventory:ConsumeByName(item, amt)
+            return true
         end
-    end
-end
-
-local function highlight(insts, highlit)
-    for k, v in pairs(insts) do
-        if not v.components.highlight then v:AddComponent('highlight') end
-        if v.components.highlight then
-            v.components.highlight:Highlight(c.r, c.g, c.b)
-            table.insert(highlit, v)
+        inventory:ConsumeByName(item, num_found_inv)
+        amt = amt - num_found_inv
+        removeFromNearbyChests(player, item, amt)
+        return true
+    else
+        done, remain = removeFromNearbyChests(player, item, amt)
+        if not done then
+            inventory:ConsumeByName(item, remain)
         end
+        return true
     end
 end
 
-local _oldCmpChestsNum = 0
-local _newCmpChestsNum = 0
 -- detect if the number of chests around the player changes.
 -- If true, push event stacksizechange
 -- TODO: find a better event to push
+local _oldCmpChestsNum = 0
+local _newCmpChestsNum = 0
 local function compareValidChests(player)
     _newCmpChestsNum = table.getn(getNearbyChest(player))
     if (_oldCmpChestsNum ~= _newCmpChestsNum) then
         _oldCmpChestsNum = _newCmpChestsNum
         player:PushEvent("stacksizechange")
-        print('Chest number changed!')
+        if DeBuG then print('Chest number changed!') end
     end
 end
 
 -- override original function
 -- to unhighlight chest when tabgroup are deselected
 function TabGroup:DeselectAll(...)
-    for k, v in ipairs(self.tabs) do
-        v:Deselect()
-    end
+    for k, v in ipairs(self.tabs) do v:Deselect() end
     unhighlight(highlit)
 end
 
@@ -164,22 +187,22 @@ function Builder:OnUpdate(dt)
 end
 
 -- TODO: different versions
--- to take ingredients from both 
+-- to take ingredients from both
 function Builder:RemoveIngredients(recname)
-    local recipe = GetRecipe(recname)
+    -- self.inst => player
+    local recipe = _G.GetRecipe(recname)
     self.inst:PushEvent("consumeingredients", {recipe = recipe})
     if recipe then
         for k, v in pairs(recipe.ingredients) do
-            local amt = math.max(1, RoundUp(v.amount * self.ingredientmod))
-            self.inst.components.inventory:ConsumeByName(v.type, amt)
+            local amt = math.max(1, _G.RoundUp(v.amount * self.ingredientmod))
+            playerConsumeByName(self.inst, v.type, amt)
         end
     end
 end
 ----------------------------------------------------------
 ---------------End Override Builder functions-------------
-
 function RecipePopup:Refresh()
-    unhighlight(highlit)
+    -- unhighlight(highlit)
     local recipe = self.recipe
     local owner = self.owner
     
@@ -329,7 +352,6 @@ function CraftSlot:OnLoseFocus()
     self:Close()
     unhighlight(highlit)
 end
-
 -- local function openChests(...)
 --     if not #consumedChests then return end
 --     for k, v in pairs(consumedChests) do
