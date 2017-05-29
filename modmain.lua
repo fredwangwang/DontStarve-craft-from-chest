@@ -1,6 +1,7 @@
 local _G = GLOBAL
 
 local range = GetModConfigData("range")
+local inv_first = GetModConfigData("is_inv_first")
 local c = {r = 0, g = 0.5, b = 0}
 
 local Builder = _G.require 'components/builder'
@@ -11,13 +12,16 @@ local TabGroup = _G.require 'widgets/tabgroup'
 local CraftSlot = _G.require 'widgets/craftslot'
 
 local highlit = {} -- tracking what is highlighted
-local consumedChest = {}
+local consumedChests = {}
+local nearbyChests = {}
 local validChests = {}
-
 
 local TEASER_SCALE_TEXT = 1
 local TEASER_SCALE_BTN = 1.5
 
+local function isTable(t) return type(t) == 'table' end
+
+-- given the list of instances, return the list of instances of chest
 local function filterChest(inst)
     local chest = {}
     for k, v in pairs(inst) do
@@ -28,12 +32,16 @@ local function filterChest(inst)
     return chest
 end
 
-local function getNearbyChest(owner)
+-- given the player, return the chests close to the player
+local function getNearbyChest(owner, dist = 0)
+    if dist == 0  then dist = range end
     local x, y, z = owner.Transform:GetWorldPosition()
-    local inst = _G.TheSim:FindEntities(x, y, z, range, {}, {'NOBLOCK', 'player', 'FX'}) or {}
+    local inst = _G.TheSim:FindEntities(x, y, z, dist, {}, {'NOBLOCK', 'player', 'FX'}) or {}
     return filterChest(inst)
 end
 
+-- return:
+-- contains (T/F) total (num) qualifyChests (list of chest contains the item)
 local function findFromChests(chests, item)
     if not (chests and item) then return false, 0, {} end
     local qualifyChests = {}
@@ -52,10 +60,36 @@ local function findFromChests(chests, item)
 end
 
 local function findFromNearbyChests(player, item)
-    chests = getNearbyChest(player)
-    if not (chests and item) then return false, 0, {} end
+    if not (player and item) then return false, 0, {} end
+    local chests = getNearbyChest(player)
     return findFromChests(chests, item)
 end
+
+local function removeFromNearbyChests(owner, item, amt)
+    local chests = getNearbyChest(owner)
+    for k, v in pairs(chests) do
+        local container = v.components.container
+        found, num_found = container:Has(item, 1)
+        if found then
+            print('foundCorrectChest')
+            table.insert(consumedChests, v)
+            if (amt > num_found) then -- not enough
+                container:ConsumeByName(item, num_found)
+                amt = amt - num_found
+            else
+                container:ConsumeByName(item, amt)
+                amt = 0
+                break
+            end
+        end
+    end
+    
+    if (amt > 0) then
+        print("cannot produce, do one more round")
+        removeFromValidChests(owner, getNearbyChest(owner), item, amt)
+    end
+end
+
 
 local function unhighlight(highlit)
     while #highlit > 0 do
@@ -76,18 +110,22 @@ local function highlight(insts, highlit)
     end
 end
 
-local _oldCmpChests = {}
-local _newCmpChests = {}
+local _oldCmpChestsNum = 0
+local _newCmpChestsNum = 0
+-- detect if the number of chests around the player changes.
+-- If true, push event stacksizechange
+-- TODO: find a better event to push
 local function compareValidChests(player)
-    _newCmpChests = getNearbyChest(player)
-    if (#_oldCmpChests ~= #_newCmpChests) then
-        _oldCmpChests = _newCmpChests
-        _newCmpChests = {}
+    _newCmpChestsNum = table.getn(getNearbyChest(player))
+    if (_oldCmpChestsNum ~= _newCmpChestsNum) then
+        _oldCmpChestsNum = _newCmpChestsNum
         player:PushEvent("stacksizechange")
-    -- print("detect #chest changing")
+        print('Chest number changed!')
     end
 end
 
+-- override original function
+-- to unhighlight chest when tabgroup are deselected
 function TabGroup:DeselectAll(...)
     for k, v in ipairs(self.tabs) do
         v:Deselect()
@@ -95,6 +133,9 @@ function TabGroup:DeselectAll(...)
     unhighlight(highlit)
 end
 
+----------------------------------------------------------
+---------------Override Builder functions-----------------
+-- to test if canbuild with the material from chest
 function Builder:CanBuild(recname)
     if self.freebuildmode then return true end
     
@@ -115,92 +156,27 @@ function Builder:CanBuild(recname)
     return false
 end
 
+-- to keep updating the number of chests as the player move around
 function Builder:OnUpdate(dt)
     local player = self.inst
     compareValidChests(player)
     self:EvaluateTechTrees()
 end
 
-local function removeFromValidChests(owner, chests, item, amt)
-    print(#chests)
-    for k, v in pairs(chests) do
-        local container = v.components.container
-        found, num_found = container:Has(item, 1)
-        if found then
-            print('foundCorrectChest')
-            table.insert(consumedChest, v)
-            if (amt > num_found) then -- not enough
-                container:ConsumeByName(item, num_found)
-                amt = amt - num_found
-            else
-                container:ConsumeByName(item, amt)
-                amt = 0
-                break
-            end
-        end
-    end
-    
-    if (amt > 0) then
-        print("cannot produce, do one more round")
-        removeFromValidChests(owner, getNearbyChest(owner), item, amt)
-    end
-end
-
-_G.DoRecipeClick = function(owner, recipe)
-    -- consumedChest = {}
-    -- for k, v in pairs(recipe.ingredients) do removeFromValidChests(owner, validChests, v.type, _G.RoundUp(v.amount * owner.components.builder.ingredientmod)) end
-    if recipe and owner and owner.components.builder then
-        local knows = owner.components.builder:KnowsRecipe(recipe.name)
-        local can_build = owner.components.builder:CanBuild(recipe.name)
-        if not can_build then
-            owner:PushEvent("cantbuild", {owner = owner, recipe = recipe})
-            --You might have the materials now. Check again.
-            can_build = owner.components.builder:CanBuild(recipe.name)
-        end
-        local buffered = owner.components.builder:IsBuildBuffered(recipe.name)
-        if knows then
-            if buffered then
-                --TheFrontEnd:GetSound():PlaySound("dontstarve/HUD/click_move")
-                --owner.HUD.controls.crafttabs.tabs:DeselectAll()
-                if recipe.placer then
-                    owner.components.playercontroller:StartBuildPlacementMode(recipe, function(pt) return owner.components.builder:CanBuildAtPoint(pt, recipe) end)
-                else
-                    owner.components.builder:MakeRecipe(recipe)
-                end
-            elseif can_build then
-                --TheFrontEnd:GetSound():PlaySound("dontstarve/HUD/click_move")
-                if recipe.placer then
-                    --owner.HUD.controls.crafttabs.tabs:DeselectAll()
-                    owner.components.builder:BufferBuild(recipe.name)
-                    owner.components.playercontroller:StartBuildPlacementMode(recipe, function(pt) return owner.components.builder:CanBuildAtPoint(pt, recipe) end)
-                else
-                    owner.components.builder:MakeRecipe(recipe)
-                    return true
-                end
-            else
-                return true
-            end
-        else
-            local tech_level = owner.components.builder.accessible_tech_trees
-            if can_build and _G.CanPrototypeRecipe(recipe.level, tech_level) then
-                owner.SoundEmitter:PlaySound("dontstarve/HUD/research_unlock")
-                local onsuccess = function()
-                    owner.components.builder:ActivateCurrentResearchMachine()
-                    owner.components.builder:UnlockRecipe(recipe.name)
-                end
-                if recipe.placer then
-                    onsuccess()
-                    owner.components.builder:BufferBuild(recipe.name)
-                    owner.components.playercontroller:StartBuildPlacementMode(recipe, function(pt) return owner.components.builder:CanBuildAtPoint(pt, recipe) end)
-                else
-                    owner.components.builder:MakeRecipe(recipe, nil, onsuccess)
-                end
-            else
-                return true
-            end
+-- TODO: different versions
+-- to take ingredients from both 
+function Builder:RemoveIngredients(recname)
+    local recipe = GetRecipe(recname)
+    self.inst:PushEvent("consumeingredients", {recipe = recipe})
+    if recipe then
+        for k, v in pairs(recipe.ingredients) do
+            local amt = math.max(1, RoundUp(v.amount * self.ingredientmod))
+            self.inst.components.inventory:ConsumeByName(v.type, amt)
         end
     end
 end
+----------------------------------------------------------
+---------------End Override Builder functions-------------
 
 function RecipePopup:Refresh()
     unhighlight(highlit)
@@ -347,16 +323,7 @@ function RecipePopup:Refresh()
     highlight(validChests, highlit)
 end
 
--- function CraftSlot:OnGainFocus()
---     CraftSlot._base.OnGainFocus(self)
---     self:Open()
---     print(self.recipename)
---     recipe = self.recipe
---     if (recipe and recipe.ingredients)
---     if (self.recipe) then
---     print(table.concat(self.recipe, ','))
---     end
--- end
+
 function CraftSlot:OnLoseFocus()
     CraftSlot._base.OnLoseFocus(self)
     self:Close()
@@ -364,29 +331,27 @@ function CraftSlot:OnLoseFocus()
 end
 
 -- local function openChests(...)
---     if not #consumedChest then return end
---     for k, v in pairs(consumedChest) do
+--     if not #consumedChests then return end
+--     for k, v in pairs(consumedChests) do
 --         if v and v.components.container then
 --             v.components.container:Open()
 --         end
 --     end
 -- end
-
 -- local function closeChests(...)
---     while #consumedChest > 0 do
---         local v = table.remove(consumedChest)
+--     while #consumedChests > 0 do
+--         local v = table.remove(consumedChests)
 --         if v and v.components.container then
 --             v.components.container:Close()
 --         end
 --     end
 -- end
-
 -- local function init(owner)
 --     if not owner then return end
 -- -- owner:ListenForEvent('consumeingredients', openChests)
 -- -- owner:ListenForEvent('newactiveitem', closeChests)
 -- end
-
 -- AddPlayerPostInit(function(owner)
 --     init(owner)
 -- end)
+local rubbisha = 0

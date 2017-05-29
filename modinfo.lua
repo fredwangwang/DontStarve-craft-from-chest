@@ -1,4 +1,4 @@
-name = 'Awesome'
+name = 'Craft from chest'
 description = 'Automatcally use necessary items from nearby containers'
 author = 'fredwangwang'
 version = '0.0.1'
@@ -8,6 +8,7 @@ priority = 1
 dont_starve_compatible = true
 reign_of_giants_compatible = true
 shipwrecked_compatible = false
+
 -- dst_compatible = true
 -- all_clients_require_mod = false
 -- client_only_mod = true
@@ -26,4 +27,14 @@ configuration_options = {
         },
         default = 30
     },
+    {
+        name = "is_inv_first",
+        label = "Take from: ",
+        options = 
+        {
+            {description = "Inv first", data = true},
+            {description = "Chest first", data = false},
+        },
+        default = true
+    }
 }
