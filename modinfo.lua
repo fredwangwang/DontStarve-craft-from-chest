@@ -1,12 +1,12 @@
 name = 'Awesome!'
 description = 'When crafting items, ingredients are automatically obtained from nearby containers. No manually searching for necessary items anymore! '
 author = 'fredwangwang'
-version = '0.0.1'
+version = '0.0.4'
 forumthread = ''
 api_version = 6
 priority = 1
 dont_starve_compatible = true
-reign_of_giants_compatible = false
+reign_of_giants_compatible = true
 shipwrecked_compatible = false
 
 icon_atlas = "modicon.xml"
@@ -26,7 +26,6 @@ configuration_options = {
             {description = "10", data = 10},
             {description = "30", data = 30},
             {description = "50", data = 50},
-            {description = "100", data = 100},
         },
         default = 10
     },

@@ -3,3 +3,8 @@
 3. check overrided functions in various versions
 4. add correct chest open/close anim
 5. if cannot craft, take the item away from the user (shouldn't be needed)
+
+
+Changelog:
+1. change default range to 10
+2. remove range 100. It's too far... will slow down the game

@@ -22,6 +22,13 @@ local TEASER_SCALE_BTN = 1.5
 
 local function isTable(t) return type(t) == 'table' end
 
+local function debugPrint(...)
+    local arg = {...}
+    if DeBuG then
+        for k, v in pairs(arg) do print(v) end
+    end
+end
+
 local function unhighlight(highlit)
     while #highlit > 0 do
         local v = table.remove(highlit)
@@ -46,6 +53,8 @@ local function filterChest(inst)
     local chest = {}
     for k, v in pairs(inst) do
         if (v and v.components.container and v.components.container.type) then
+            -- as cooker and backpack are considered as containers as well
+            -- regex to match ['chest', 'chester']
             if string.find(v.components.container.type, 'chest') ~= nil then
                 table.insert(chest, v)
             end
@@ -55,15 +64,15 @@ local function filterChest(inst)
 end
 
 -- given the player, return the chests close to the player
-local function getNearbyChest(owner, dist)
+local function getNearbyChest(player, dist)
     if dist == nil then dist = range end
-    local x, y, z = owner.Transform:GetWorldPosition()
+    if not player then return {} end
+    local x, y, z = player.Transform:GetWorldPosition()
     local inst = _G.TheSim:FindEntities(x, y, z, dist, {}, {'NOBLOCK', 'player', 'FX'}) or {}
     return filterChest(inst)
 end
 
--- return:
--- contains (T/F) total (num) qualifyChests (list of chest contains the item)
+-- return: contains (T/F) total (num) qualifyChests (list of chest contains the item)
 local function findFromChests(chests, item)
     if not (chests and item) then return false, 0, {} end
     local qualifyChests = {}
@@ -87,9 +96,12 @@ local function findFromNearbyChests(player, item)
     return findFromChests(chests, item)
 end
 
-local function removeFromNearbyChests(owner, item, amt)
+local function removeFromNearbyChests(player, item, amt)
+    if not (player and item and amt ~= nil) then debugPrint('removeFromNearbyChests: player | item | amt missing!') return false, amt end
+    debugPrint('removeFromNearbyChests', player, item, amt)
+    
     consumedChests = {}-- clear consumed chests
-    local chests = getNearbyChest(owner, range + 3)-- extend the range a little bit, avoid error caused by slight player movement
+    local chests = getNearbyChest(player, range + 3)-- extend the range a little bit, avoid error caused by slight player movement
     local numItemsFound = 0
     for k, v in pairs(chests) do
         local container = v.components.container
@@ -107,7 +119,7 @@ local function removeFromNearbyChests(owner, item, amt)
             end
         end
     end
-    if DeBuG then print('Found ' .. numItemsFound .. item .. ' from ' .. #consumedChests .. ' chests') end
+    debugPrint('Found ' .. numItemsFound .. ' ' .. item .. ' from ' .. #consumedChests .. ' chests')
     if amt == 0 then return true, 0
     else return false, amt end
 end
@@ -117,13 +129,14 @@ local function playerConsumeByName(player, item, amt)
     local inventory = player.components.inventory
     if inv_first then
         found_inv, num_in_inv = inventory:Has(item, 1)
-        if amt < num_found_inv then
+        if amt < num_in_inv then
             -- there are more resources available in inv then needed
             inventory:ConsumeByName(item, amt)
             return true
         end
-        inventory:ConsumeByName(item, num_found_inv)
-        amt = amt - num_found_inv
+        inventory:ConsumeByName(item, num_in_inv)
+        amt = amt - num_in_inv
+        debugPrint('Found ' .. num_in_inv .. ' in inventory, take ' .. amt .. 'from chests')
         removeFromNearbyChests(player, item, amt)
         return true
     else
@@ -135,9 +148,64 @@ local function playerConsumeByName(player, item, amt)
     end
 end
 
+local function playerGetByName(player, item, amt)
+    debugPrint('playerGetByName ' .. item)
+    if not (player and item and amt and amt ~= 0) then
+        debugPrint('playerGetByName: player | item | amt missing!')
+        return {}
+    end
+    
+    local items = {}
+    
+    local function addToItems(another_item)
+        for k, v in pairs(another_item) do
+            if items[k] == nil then
+                items[k] = v
+            else
+                items[k] = items[k] + v
+            end
+        end
+    end
+    
+    local function tryGetFromContainer(volume)
+        found, num = volume:Has(item, 1)
+        if found then
+            if num >= amt then -- there is more than necessary
+                addToItems(volume:GetItemByName(item, amt))
+                amt = 0
+                return true
+            else -- it's not enough
+                addToItems(volume:GetItemByName(item, num))
+                amt = amt - num
+                return false
+            end
+        end
+        return false
+    end
+    
+    local inventory = player.components.inventory
+    local chests = getNearbyChest(player)
+    
+    if inv_first then -- get ingredients from inventory first
+        if tryGetFromContainer(inventory) then return items end
+        for k, v in pairs(chests) do
+            local container = v.components.container
+            if tryGetFromContainer(container) then return items end
+        end
+    else -- get ingredients from chests first
+        for k, v in pairs(chests) do
+            local container = v.components.container
+            if tryGetFromContainer(container) then return items end
+        end
+        tryGetFromContainer(inventory)
+        return items
+    end
+    return items
+end
+
 -- detect if the number of chests around the player changes.
 -- If true, push event stacksizechange
--- TODO: find a better event to push
+-- TODO: find a better event to push than "stacksizechange"
 local _oldCmpChestsNum = 0
 local _newCmpChestsNum = 0
 local function compareValidChests(player)
@@ -145,11 +213,12 @@ local function compareValidChests(player)
     if (_oldCmpChestsNum ~= _newCmpChestsNum) then
         _oldCmpChestsNum = _newCmpChestsNum
         player:PushEvent("stacksizechange")
-        if DeBuG then print('Chest number changed!') end
+        debugPrint('Chest number changed!')
     end
 end
 
 -- override original function
+-- Support DS, RoG. SW not tested
 -- to unhighlight chest when tabgroup are deselected
 function TabGroup:DeselectAll(...)
     for k, v in ipairs(self.tabs) do v:Deselect() end
@@ -157,7 +226,7 @@ function TabGroup:DeselectAll(...)
 end
 
 ----------------------------------------------------------
----------------Override Builder functions-----------------
+---------------Override Builder functions (DS, RoG)-------
 -- to test if canbuild with the material from chest
 function Builder:CanBuild(recname)
     if self.freebuildmode then return true end
@@ -181,23 +250,54 @@ end
 
 -- to keep updating the number of chests as the player move around
 function Builder:OnUpdate(dt)
-    local player = self.inst
-    compareValidChests(player)
+    compareValidChests(self.inst)
     self:EvaluateTechTrees()
 end
 
--- TODO: different versions
--- to take ingredients from both
-function Builder:RemoveIngredients(recname)
-    -- self.inst => player
+-- This function is for RoG, base game doesn't have this function'
+function Builder:GetIngredients(recname)
+    debugPrint('Custom Builder:GetIngredients: ' .. recname)
     local recipe = _G.GetRecipe(recname)
-    self.inst:PushEvent("consumeingredients", {recipe = recipe})
     if recipe then
+        local ingredients = {}
         for k, v in pairs(recipe.ingredients) do
             local amt = math.max(1, _G.RoundUp(v.amount * self.ingredientmod))
-            playerConsumeByName(self.inst, v.type, amt)
+            -- local items = self.inst.components.inventory:GetItemByName(v.type, amt)
+            local items = playerGetByName(self.inst, v.type, amt)
+            ingredients[v.type] = items
+        end
+        return ingredients
+    end
+end
+
+-- to take ingredients from both inv and chests
+function Builder:RemoveIngredients(recname_or_ingre)
+    if not isTable(recname_or_ingre) then -- param is a recname, which is base game
+        local recipe = _G.GetRecipe(recname_or_ingre)
+        if recipe then
+            for k, v in pairs(recipe.ingredients) do
+                local amt = math.max(1, _G.RoundUp(v.amount * self.ingredientmod))
+                playerConsumeByName(self.inst, v.type, amt)
+            end
+        end
+    else
+        -- this is RoG version of removeIngredients
+        -- RoG uses another function: getingredients to load all ingredients, so this part
+        -- does not require a lot modification
+        debugPrint('RoG Ver Builder:RemoveIngredients')
+        for item, ents in pairs(recname_or_ingre) do
+            for k, v in pairs(ents) do
+                for i = 1, v do
+                    -- TODO: change this line
+                    -- Now it can successfully deduct the number of items, but if the item is in
+                    -- the chest, it will not pushevent: "loseitem". Although I didn't see a major
+                    -- effect on that, but better to add it back
+                    self.inst.components.inventory:RemoveItem(k, false):Remove()
+                end
+            end
         end
     end
+    self.inst:PushEvent("consumeingredients", {recipe = recipe})
 end
 ----------------------------------------------------------
 ---------------End Override Builder functions-------------
@@ -335,8 +435,9 @@ function RecipePopup:Refresh()
             item_img = _G.SW_ICONS[item_img]
         end
         
-        local ingredientUI = IngredientUI(v.atlas, item_img .. ".tex", need, total, total > need, _G.STRINGS.NAMES[string.upper(v.type)], owner)
-        ingredientUI.quant:SetString(string.format("Inv:%d/%d\nAll:%d/%d", num_found_inv, need, total, need))
+        local ingredientUI = IngredientUI(v.atlas, item_img .. ".tex", need, total, total >= need, _G.STRINGS.NAMES[string.upper(v.type)], owner)
+        -- ingredientUI.quant:SetString(string.format("Inv:%d/%d\nAll:%d/%d", num_found_inv, need, total, need))
+        ingredientUI.quant:SetString(string.format("All:%d/%d\n(Inv:%d)", total, need, num_found_inv))
         local ing = self.contents:AddChild(ingredientUI)
         ing:SetPosition(_G.Vector3(offset, 80, 0))
         offset = offset + (w + div)
@@ -346,11 +447,10 @@ function RecipePopup:Refresh()
     highlight(validChests, highlit)
 end
 
-
 function CraftSlot:OnLoseFocus()
     CraftSlot._base.OnLoseFocus(self)
-    self:Close()
     unhighlight(highlit)
+    self:Close()
 end
 -- local function openChests(...)
 --     if not #consumedChests then return end
@@ -376,4 +476,5 @@ end
 -- AddPlayerPostInit(function(owner)
 --     init(owner)
 -- end)
-local rubbisha = 0
+-- If the last line is comment, my code editor doesn't format my code correctly, rubbish XD
+local rubbisha = false
