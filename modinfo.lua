@@ -1,4 +1,4 @@
-name = 'Craft from chest'
+name = 'Awesome!'
 description = 'When crafting items, ingredients are automatically obtained from nearby containers. No manually searching for necessary items anymore! '
 author = 'fredwangwang'
 version = '0.0.1'
@@ -28,7 +28,7 @@ configuration_options = {
             {description = "50", data = 50},
             {description = "100", data = 100},
         },
-        default = 30
+        default = 10
     },
     {
         name = "is_inv_first",
