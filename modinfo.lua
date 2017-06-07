@@ -1,13 +1,13 @@
-name = 'Awesome!'
+name = 'Craft from chest'
 description = 'When crafting items, ingredients are automatically obtained from nearby containers. No manually searching for necessary items anymore! '
 author = 'fredwangwang'
-version = '0.0.4'
+version = '1.0.1'
 forumthread = ''
 api_version = 6
 priority = 1
 dont_starve_compatible = true
 reign_of_giants_compatible = true
-shipwrecked_compatible = false
+shipwrecked_compatible = true
 
 icon_atlas = "modicon.xml"
 icon = "modicon.tex"
