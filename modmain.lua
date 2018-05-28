@@ -96,6 +96,7 @@ local function findFromNearbyChests(player, item)
     return findFromChests(chests, item)
 end
 
+-- return: whether it is enough to fullfill the amt requirement, and the amt not fulfilled.
 local function removeFromNearbyChests(player, item, amt)
     if not (player and item and amt ~= nil) then debugPrint('removeFromNearbyChests: player | item | amt missing!') return false, amt end
     debugPrint('removeFromNearbyChests', player, item, amt)
@@ -129,7 +130,7 @@ local function playerConsumeByName(player, item, amt)
     local inventory = player.components.inventory
     if inv_first then
         found_inv, num_in_inv = inventory:Has(item, 1)
-        if amt < num_in_inv then
+        if amt <= num_in_inv then
             -- there are more resources available in inv then needed
             inventory:ConsumeByName(item, amt)
             return true
@@ -212,8 +213,8 @@ local function compareValidChests(player)
     _newCmpChestsNum = table.getn(getNearbyChest(player))
     if (_oldCmpChestsNum ~= _newCmpChestsNum) then
         _oldCmpChestsNum = _newCmpChestsNum
-        player:PushEvent("stacksizechange")
         debugPrint('Chest number changed!')
+        player:PushEvent("stacksizechange")
     end
 end
 
@@ -252,6 +253,9 @@ end
 function Builder:OnUpdate(dt)
     compareValidChests(self.inst)
     self:EvaluateTechTrees()
+    if self.EvaluateAutoFixers ~= nil then
+        self:EvaluateAutoFixers()
+    end
 end
 
 -- This function is for RoG, base game doesn't have this function'
