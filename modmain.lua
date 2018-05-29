@@ -333,6 +333,7 @@ function RecipePopup:Refresh()
             ["PRESTIHATITATOR"] = _G.STRINGS.UI.CRAFTING.NEEDPRESTIHATITATOR,
             ["CANTRESEARCH"] = _G.STRINGS.UI.CRAFTING.CANTRESEARCH,
             ["ANCIENTALTAR_HIGH"] = _G.STRINGS.UI.CRAFTING.NEEDSANCIENT_FOUR,
+            ["SEALAB"] = _G.STRINGS.UI.CRAFTING.NEEDALCHEMYENGINE,
         }
         
         if _G.SaveGameIndex:IsModeShipwrecked() then
