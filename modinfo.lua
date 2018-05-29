@@ -1,7 +1,7 @@
 name = 'Craft from chest'
 description = 'When crafting items, ingredients are automatically obtained from nearby containers. No manually searching for necessary items anymore! '
 author = 'fredwangwang'
-version = '1.0.1'
+version = '1.1.0'
 forumthread = ''
 api_version = 6
 priority = 1
