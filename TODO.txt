@@ -8,3 +8,5 @@
 Changelog:
 1. change default range to 10
 2. remove range 100. It's too far... will slow down the game
+3. fix a minor bug
+4. add xbox controller support
