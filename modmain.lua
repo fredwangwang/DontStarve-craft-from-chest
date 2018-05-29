@@ -19,6 +19,7 @@ local validChests = {}
 
 local TEASER_SCALE_TEXT = 1
 local TEASER_SCALE_BTN = 1.5
+local CONTROL_ACCEPT = _G.CONTROL_ACCEPT
 
 local function isTable(t) return type(t) == 'table' end
 
