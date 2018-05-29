@@ -278,6 +278,7 @@ end
 function Builder:RemoveIngredients(recname_or_ingre)
     if not isTable(recname_or_ingre) then -- param is a recname, which is base game
         local recipe = _G.GetRecipe(recname_or_ingre)
+        self.inst:PushEvent("consumeingredients", {recipe = recipe})
         if recipe then
             for k, v in pairs(recipe.ingredients) do
                 local amt = math.max(1, _G.RoundUp(v.amount * self.ingredientmod))
@@ -300,8 +301,8 @@ function Builder:RemoveIngredients(recname_or_ingre)
                 end
             end
         end
+        self.inst:PushEvent("consumeingredients")
     end
-    self.inst:PushEvent("consumeingredients", {recipe = recipe})
 end
 ----------------------------------------------------------
 ---------------End Override Builder functions-------------
