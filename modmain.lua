@@ -1,6 +1,3 @@
-GLOBAL.CHEATS_ENABLED = true
-GLOBAL.require("debugkeys")
-
 local _G = GLOBAL
 
 local DeBuG = GetModConfigData("debug")
@@ -10,36 +7,39 @@ local c = {r = 0, g = 0.3, b = 0}
 
 local Builder = _G.require "components/builder"
 local Builder_replica = _G.require "components/builder_replica"
-local Highlight = _G.require "components/highlight"
 local IngredientUI = _G.require "widgets/ingredientui"
 local RecipePopup = _G.require "widgets/recipepopup"
 local TabGroup = _G.require "widgets/tabgroup"
 local CraftSlot = _G.require "widgets/craftslot"
 
-local highlit = {}
 -- tracking what is highlighted
+local highlit = {}
+
 local consumedChests = {}
-local nearbyChests = {}
 local validChests = {}
 
 local TEASER_SCALE_TEXT = 1
 local TEASER_SCALE_BTN = 1.5
+local TEASER_TEXT_WIDTH = 64 * 3 + 24
+local TEASER_BTN_WIDTH = TEASER_TEXT_WIDTH / TEASER_SCALE_BTN
+local TEXT_WIDTH = 64 * 3 + 30
 local CONTROL_ACCEPT = _G.CONTROL_ACCEPT
 
-local function isTable(t)
-    return type(t) == "table"
+if DeBuG then
+    _G.CHEATS_ENABLED = true
+    _G.require("debugkeys")
 end
 
 local function debugPrint(...)
     local arg = {...}
-    -- if DeBuG then
-    for k, v in pairs(arg) do
-        print(v)
+    if DeBuG then
+        for _, v in ipairs(arg) do
+            print(v)
+        end
     end
-    -- end
 end
 
-local function unhighlight(highlit)
+local function unhighlight()
     while #highlit > 0 do
         local v = table.remove(highlit)
         if v and v.components.highlight then
@@ -48,7 +48,7 @@ local function unhighlight(highlit)
     end
 end
 
-local function highlight(insts, highlit)
+local function highlight(insts)
     for _, v in ipairs(insts) do
         if not v.components.highlight then
             v:AddComponent("highlight")
@@ -261,7 +261,7 @@ function TabGroup:DeselectAll()
         v:Deselect()
     end
     self.selected = nil
-    unhighlight(highlit)
+    unhighlight()
 end
 ----------------------------------------------------------
 ---------------Override Builder functions (DS, RoG)-------
@@ -278,7 +278,7 @@ function Builder_replica:Canbuild(recipename)
         if recipe == nil then
             return false
         elseif not self.classified.isfreebuildmode:value() then
-            for i, v in ipairs(recipe.ingredients) do
+            for _, v in ipairs(recipe.ingredients) do
                 if
                     not self.inst.replica.inventory:Has(
                         v.type,
@@ -289,12 +289,12 @@ function Builder_replica:Canbuild(recipename)
                 end
             end
         end
-        for i, v in ipairs(recipe.character_ingredients) do
+        for _, v in ipairs(recipe.character_ingredients) do
             if not self:HasCharacterIngredient(v) then
                 return false
             end
         end
-        for i, v in ipairs(recipe.tech_ingredients) do
+        for _, v in ipairs(recipe.tech_ingredients) do
             if not self:HasTechIngredient(v) then
                 return false
             end
@@ -306,6 +306,7 @@ function Builder_replica:Canbuild(recipename)
 end
 
 function Builder:CanBuild(recname)
+    debugPrint("calling Builder:CanBuild")
     local recipe = _G.GetValidRecipe(recname)
     if recipe == nil then
         return false
@@ -335,7 +336,7 @@ function Builder:CanBuild(recname)
 end
 
 -- to keep updating the number of chests as the player move around
-function Builder:OnUpdate(dt)
+function Builder:OnUpdate()
     compareValidChests(self.inst)
     self:EvaluateTechTrees()
     if self.EvaluateAutoFixers ~= nil then
@@ -381,172 +382,347 @@ function Builder:RemoveIngredients(ingredients, recname)
                 self.inst.components.health:DeltaPenalty(v.amount)
             elseif v.type == CHARACTER_INGREDIENT.SANITY then
                 self.inst.components.sanity:DoDelta(-v.amount)
-            elseif v.type == CHARACTER_INGREDIENT.MAX_SANITY then
-            --[[
-                    Because we don't have any maxsanity restoring items we want to be more careful
-                    with how we remove max sanity. Because of that, this is not handled here.
-                    Removal of sanity is actually managed by the entity that is created.
-                    See maxwell's pet leash on spawn and pet on death functions for examples.
-                --]]
-            end
+            -- elseif v.type == CHARACTER_INGREDIENT.MAX_SANITY then
+            -- --[[
+            --         Because we don't have any maxsanity restoring items we want to be more careful
+            --         with how we remove max sanity. Because of that, this is not handled here.
+            --         Removal of sanity is actually managed by the entity that is created.
+            --         See maxwell's pet leash on spawn and pet on death functions for examples.
+            --     --]]
+            -- end
         end
     end
     self.inst:PushEvent("consumeingredients")
 end
 ----------------------------------------------------------
 ---------------End Override Builder functions-------------
--- function RecipePopup:Refresh()
---     -- unhighlight(highlit)
---     local recipe = self.recipe
---     local owner = self.owner
+local function GetHintTextForRecipe(player, recipe)
+    local validmachines = {}
+    local adjusted_level = _G.deepcopy(recipe.level)
 
---     if not owner then return false end
+    for k, v in pairs(_G.TUNING.PROTOTYPER_TREES) do
+        -- Adjust level for bonus so that the hint gives the right message
+        if player.replica.builder ~= nil then
+            if k == "SCIENCEMACHINE" or k == "ALCHEMYMACHINE" then
+                adjusted_level.SCIENCE = adjusted_level.SCIENCE - player.replica.builder:ScienceBonus()
+            elseif k == "PRESTIHATITATOR" or k == "SHADOWMANIPULATOR" then
+                adjusted_level.MAGIC = adjusted_level.MAGIC - player.replica.builder:MagicBonus()
+            elseif k == "ANCIENTALTAR_LOW" or k == "ANCIENTALTAR_HIGH" then
+                adjusted_level.ANCIENT = adjusted_level.ANCIENT - player.replica.builder:AncientBonus()
+            elseif k == "WAXWELLJOURNAL" then
+                adjusted_level.SHADOW = adjusted_level.SHADOW - player.replica.builder:ShadowBonus()
+            end
+        end
 
---     local knows = owner.components.builder:KnowsRecipe(recipe.name)
---     local buffered = owner.components.builder:IsBuildBuffered(recipe.name)
---     local can_build = owner.components.builder:CanBuild(recipe.name) or buffered
---     local tech_level = owner.components.builder.accessible_tech_trees
---     local should_hint = not knows and _G.ShouldHintRecipe(recipe.level, tech_level) and not _G.CanPrototypeRecipe(recipe.level, tech_level)
---     local equippedBody = owner.components.inventory:GetEquippedItem(_G.EQUIPSLOTS.BODY)
---     local showamulet = equippedBody and equippedBody.prefab == "greenamulet"
---     local controller_id = _G.TheInput:GetControllerID()
+        local canbuild = _G.CanPrototypeRecipe(adjusted_level, v)
+        if canbuild then
+            table.insert(validmachines, {TREE = tostring(k), SCORE = 0})
+        --return tostring(k)
+        end
+    end
 
---     if should_hint then
---         self.recipecost:Hide()
---         self.button:Hide()
---         local hint_text = {
---             ["SCIENCEMACHINE"] = _G.STRINGS.UI.CRAFTING.NEEDSCIENCEMACHINE,
---             ["ALCHEMYMACHINE"] = _G.STRINGS.UI.CRAFTING.NEEDALCHEMYENGINE,
---             ["SHADOWMANIPULATOR"] = _G.STRINGS.UI.CRAFTING.NEEDSHADOWMANIPULATOR,
---             ["PRESTIHATITATOR"] = _G.STRINGS.UI.CRAFTING.NEEDPRESTIHATITATOR,
---             ["CANTRESEARCH"] = _G.STRINGS.UI.CRAFTING.CANTRESEARCH,
---             ["ANCIENTALTAR_HIGH"] = _G.STRINGS.UI.CRAFTING.NEEDSANCIENT_FOUR,
---             ["SEALAB"] = _G.STRINGS.UI.CRAFTING.NEEDALCHEMYENGINE,
---         }
+    if #validmachines > 0 then
+        if #validmachines == 1 then
+            --There's only once machine is valid. Return that one.
+            return validmachines[1].TREE
+        end
 
---         if _G.SaveGameIndex:IsModeShipwrecked() then
---             hint_text["PRESTIHATITATOR"] = _G.STRINGS.UI.CRAFTING.NEEDPIRATIHATITATOR
---         end
+        --There's more than one machine that gives the valid tech level! We have to find the "lowest" one (taking bonus into account).
+        for k, v in pairs(validmachines) do
+            for rk, rv in pairs(adjusted_level) do
+                if _G.TUNING.PROTOTYPER_TREES[v.TREE][rk] == rv then
+                    v.SCORE = v.SCORE + 1
+                    if player.replica.builder ~= nil then
+                        if v.TREE == "SCIENCEMACHINE" or v.TREE == "ALCHEMYMACHINE" then
+                            v.SCORE = v.SCORE + player.replica.builder:ScienceBonus()
+                        elseif v.TREE == "PRESTIHATITATOR" or v.TREE == "SHADOWMANIPULATOR" then
+                            v.SCORE = v.SCORE + player.replica.builder:MagicBonus()
+                        elseif v.TREE == "ANCIENTALTAR_LOW" or v.TREE == "ANCIENTALTAR_HIGH" then
+                            v.SCORE = v.SCORE + player.replica.builder:AncientBonus()
+                        elseif v.TREE == "WAXWELLJOURNAL" then
+                            v.SCORE = v.SCORE + player.replica.builder:ShadowBonus()
+                        end
+                    end
+                end
+            end
+        end
 
---         local str = hint_text[_G.GetHintTextForRecipe(recipe)] or "Text not found."
---         self.teaser:SetScale(TEASER_SCALE_TEXT)
---         self.teaser:SetString(str)
---         self.teaser:Show()
---         showamulet = false
---     elseif knows then
---         self.teaser:Hide()
---         self.recipecost:Hide()
+        -- local bestmachine = nil
+        -- for each req in recipe.level do
+        --     for m in validmachines do
+        --         if req > 0 and m[req] >= req and m[req] < bestmachine[req] then
+        --             bestmachine = m
+        --         end
+        --     end
+        -- end
 
---         if _G.TheInput:ControllerAttached() then
---             self.button:Hide()
---             self.teaser:Show()
+        table.sort(
+            validmachines,
+            function(a, b)
+                return (a.SCORE) > (b.SCORE)
+            end
+        )
 
---             if can_build then
---                 self.teaser:SetScale(TEASER_SCALE_BTN)
---                 self.teaser:SetString(_G.TheInput:GetLocalizedControl(controller_id, CONTROL_ACCEPT) .. " " .. (buffered and _G.STRINGS.UI.CRAFTING.PLACE or _G.STRINGS.UI.CRAFTING.BUILD))
---             else
---                 self.teaser:SetScale(TEASER_SCALE_TEXT)
---                 self.teaser:SetString(_G.STRINGS.UI.CRAFTING.NEEDSTUFF)
---             end
---         else
---             self.button:Show()
---             self.button:SetPosition(320, -105, 0)
---             self.button:SetScale(1, 1, 1)
+        return validmachines[1].TREE
+    end
 
---             self.button:SetText(buffered and _G.STRINGS.UI.CRAFTING.PLACE or _G.STRINGS.UI.CRAFTING.BUILD)
---             if can_build
---             then self.button:Enable()
---             else self.button:Disable() end
---         end
---     else
---         self.teaser:Hide()
---         self.recipecost:Hide()
+    return "CANTRESEARCH"
+end
 
---         if _G.TheInput:ControllerAttached() then
---             self.button:Hide()
---             self.teaser:Show()
---             self.teaser:SetColour(1, 1, 1, 1)
---             if can_build then
---                 self.teaser:SetScale(TEASER_SCALE_BTN)
---                 self.teaser:SetString(_G.TheInput:GetLocalizedControl(controller_id, CONTROL_ACCEPT) .. " " .. _G.STRINGS.UI.CRAFTING.PROTOTYPE)
---             else
---                 self.teaser:SetScale(TEASER_SCALE_TEXT)
---                 self.teaser:SetString(_G.STRINGS.UI.CRAFTING.NEEDSTUFF)
---             end
---         else
---             self.button.image_normal = "button.tex"
---             self.button.image:SetTexture(_G.UI_ATLAS, self.button.image_normal)
+function RecipePopup:Refresh()
+    debugPrint("calling RecipePopup:Refresh for " .. self.recipe.name)
+    validChests = {}
 
---             self.button:Show()
---             self.button:SetPosition(320, -105, 0)
---             self.button:SetScale(1, 1, 1)
+    local STRINGS = _G.STRINGS
+    local recipe = self.recipe
+    local owner = self.owner
+    if owner == nil then
+        return false
+    end
 
---             self.button:SetText(_G.STRINGS.UI.CRAFTING.PROTOTYPE)
---             if can_build
---             then self.button:Enable()
---             else self.button:Disable() end
---         end
---     end
+    local builder_replica = owner.replica.builder
+    local inventory_replica = owner.replica.inventory
 
---     if not showamulet then self.amulet:Hide()
---     else self.amulet:Show() end
+    local knows = builder_replica:KnowsRecipe(recipe.name)
+    local buffered = builder_replica:IsBuildBuffered(recipe.name)
+    local can_build = buffered or builder_replica:CanBuild(recipe.name)
+    local tech_level = builder_replica:GetTechTrees()
+    local should_hint =
+        not knows and _G.ShouldHintRecipe(recipe.level, tech_level) and
+        not _G.CanPrototypeRecipe(recipe.level, tech_level)
 
---     self.name:SetString(_G.STRINGS.NAMES[string.upper(self.recipe.name)])
---     self.desc:SetString(_G.STRINGS.RECIPE_DESC[string.upper(self.recipe.name)])
+    self.skins_list = self:GetSkinsList()
+    self.skins_options = self:GetSkinOptions() -- In offline mode, this will return the default option and nothing else
 
---     for k, v in pairs(self.ing) do
---         v:Kill()
---     end
---     self.ing = {}
+    if #self.skins_options == 1 then
+        -- No skins available, so use the original version of this popup
+        if self.skins_spinner ~= nil then
+            self:BuildNoSpinner(self.horizontal)
+        end
+    else
+        --Skins are available, use the spinner version of this popup
+        if self.skins_spinner == nil then
+            self:BuildWithSpinner(self.horizontal)
+        end
 
---     local center = 330
---     local num = 0
---     for k, v in pairs(recipe.ingredients) do num = num + 1 end
---     local w = 64
---     local div = 10
+        self.skins_spinner.spinner:SetOptions(self.skins_options)
+        local last_skin = _G.Profile:GetLastUsedSkinForItem(recipe.name)
+        if last_skin then
+            self.skins_spinner.spinner:SetSelectedIndex(self:GetIndexForSkin(last_skin) or 1)
+        end
+    end
 
---     local offset = center
---     if num > 1 then
---         offset = offset - (w / 2 + div) * (num - 1)
---     end
+    self.name:SetTruncatedString(
+        STRINGS.NAMES[string.upper(self.recipe.name)],
+        TEXT_WIDTH,
+        self.smallfonts and 51 or 41,
+        true
+    )
+    self.desc:SetMultilineTruncatedString(
+        STRINGS.RECIPE_DESC[string.upper(self.recipe.name)],
+        2,
+        TEXT_WIDTH,
+        self.smallfonts and 40 or 33,
+        true
+    )
 
---     local total, need, has_chest, num_found_chest, has_inv, num_found_inv
---     validChests = {}
+    for _, v in ipairs(self.ing) do
+        v:Kill()
+    end
 
---     for k, v in pairs(recipe.ingredients) do
---         -- calculations
---         local validChestsOfIngredient = {}
---         need = _G.RoundUp(v.amount * owner.components.builder.ingredientmod)
---         has_inv, num_found_inv = owner.components.inventory:Has(v.type, need)
---         has_chest, num_found_chest, validChestsOfIngredient = findFromNearbyChests(owner, v.type)
+    self.ing = {}
 
---         total = num_found_chest + num_found_inv
+    local num =
+        (recipe.ingredients ~= nil and #recipe.ingredients or 0) +
+        (recipe.character_ingredients ~= nil and #recipe.character_ingredients or 0) +
+        (recipe.tech_ingredients ~= nil and #recipe.tech_ingredients or 0)
+    local w = 64
+    local div = 10
+    local half_div = div * .5
+    local offset = 315 --center
+    if num > 1 then
+        offset = offset - (w * .5 + half_div) * (num - 1)
+    end
 
---         -- merge tables
---         for k1, v1 in pairs(validChestsOfIngredient) do table.insert(validChests, v1) end
+    local hint_tech_ingredient = nil
 
---         local item_img = v.type
---         if _G.SaveGameIndex:IsModeShipwrecked() and _G.SW_ICONS[item_img] ~= nil then
---             item_img = _G.SW_ICONS[item_img]
---         end
+    -- processing tech ingredients
+    for _, v in ipairs(recipe.tech_ingredients) do
+        if v.type:sub(-9) == "_material" then
+            local has, _ = builder_replica:HasTechIngredient(v)
+            local ing =
+                self.contents:AddChild(
+                IngredientUI(
+                    v.atlas,
+                    v.type .. ".tex",
+                    nil,
+                    nil,
+                    has,
+                    STRINGS.NAMES[string.upper(v.type)],
+                    owner,
+                    v.type
+                )
+            )
+            if num > 1 and #self.ing > 0 then
+                offset = offset + half_div
+            end
+            ing:SetPosition(_G.Vector3(offset, self.skins_spinner ~= nil and 110 or 80, 0))
+            offset = offset + w + half_div
+            table.insert(self.ing, ing)
+            if not has and hint_tech_ingredient == nil then
+                hint_tech_ingredient = v.type:sub(1, -10):upper()
+            end
+        end
+    end
 
---         local ingredientUI = IngredientUI(v.atlas, item_img .. ".tex", need, total, total >= need, _G.STRINGS.NAMES[string.upper(v.type)], owner)
---         -- ingredientUI.quant:SetString(string.format("Inv:%d/%d\nAll:%d/%d", num_found_inv, need, total, need))
---         ingredientUI.quant:SetString(string.format("All:%d/%d\n(Inv:%d)", total, need, num_found_inv))
---         local ing = self.contents:AddChild(ingredientUI)
---         ing:SetPosition(_G.Vector3(offset, 80, 0))
---         offset = offset + (w + div)
---         self.ing[k] = ing
---     end
+    -- processing normal ingredients
+    for _, v in ipairs(recipe.ingredients) do
+        local need = _G.RoundBiasedUp(v.amount * builder_replica:IngredientMod())
+        local _, num_found_inv = inventory_replica:Has(v.type, need)
+        local _, num_found_chest, valid_chests_for_ingredient = findFromNearbyChests(owner, v.type)
+        local total = num_found_chest + num_found_inv
 
---     highlight(validChests, highlit)
--- end
+        -- local has, num_found =
+        --     inventory_replica:Has(v.type, _G.RoundBiasedUp(v.amount * builder_replica:IngredientMod()))
 
--- function CraftSlot:OnLoseFocus()
---     CraftSlot._base.OnLoseFocus(self)
---     unhighlight(highlit)
---     self:Close()
--- end
+        -- merge tables
+        for _, v1 in ipairs(valid_chests_for_ingredient) do
+            table.insert(validChests, v1)
+        end
+
+        local ing =
+            self.contents:AddChild(
+            IngredientUI(
+                v.atlas,
+                v.type .. ".tex",
+                need,
+                total,
+                total >= need,
+                STRINGS.NAMES[string.upper(v.type)],
+                owner,
+                v.type
+            )
+        )
+        if num > 1 and #self.ing > 0 then
+            offset = offset + half_div
+        end
+        ing:SetPosition(_G.Vector3(offset, self.skins_spinner ~= nil and 110 or 80, 0))
+        offset = offset + w + half_div
+        table.insert(self.ing, ing)
+    end
+
+    -- processing character ingredients
+    for _, v in ipairs(recipe.character_ingredients) do
+        --#BDOIG - does this need to listen for deltas and change while menu is open?
+        --V2C: yes, but the entire craft tabs does. (will be added there)
+        local has, amount = builder_replica:HasCharacterIngredient(v)
+        local ing =
+            self.contents:AddChild(
+            IngredientUI(
+                v.atlas,
+                v.type .. ".tex",
+                v.amount,
+                amount,
+                has,
+                STRINGS.NAMES[string.upper(v.type)],
+                owner,
+                v.type
+            )
+        )
+        if num > 1 and #self.ing > 0 then
+            offset = offset + half_div
+        end
+        ing:SetPosition(_G.Vector3(offset, self.skins_spinner ~= nil and 110 or 80, 0))
+        offset = offset + w + half_div
+        table.insert(self.ing, ing)
+    end
+
+    local equippedBody = inventory_replica:GetEquippedItem(_G.EQUIPSLOTS.BODY)
+    local showamulet = equippedBody and equippedBody.prefab == "greenamulet"
+
+    if should_hint or hint_tech_ingredient ~= nil then
+        self.button:Hide()
+
+        local str
+        if should_hint then
+            local hint_text = {
+                ["SCIENCEMACHINE"] = STRINGS.UI.CRAFTING.NEEDSCIENCEMACHINE,
+                ["ALCHEMYMACHINE"] = STRINGS.UI.CRAFTING.NEEDALCHEMYENGINE,
+                ["SHADOWMANIPULATOR"] = STRINGS.UI.CRAFTING.NEEDSHADOWMANIPULATOR,
+                ["PRESTIHATITATOR"] = STRINGS.UI.CRAFTING.NEEDPRESTIHATITATOR,
+                ["CANTRESEARCH"] = STRINGS.UI.CRAFTING.CANTRESEARCH,
+                ["ANCIENTALTAR_HIGH"] = STRINGS.UI.CRAFTING.NEEDSANCIENT_FOUR
+            }
+            str = hint_text[GetHintTextForRecipe(owner, recipe)]
+        else
+            str = STRINGS.UI.CRAFTING.NEEDSTECH[hint_tech_ingredient]
+        end
+        self.teaser:SetScale(TEASER_SCALE_TEXT)
+        self.teaser:SetMultilineTruncatedString(str, 3, TEASER_TEXT_WIDTH, 38, true)
+        self.teaser:Show()
+        showamulet = false
+    else
+        self.teaser:Hide()
+
+        local buttonstr =
+            (not (knows or recipe.nounlock) and STRINGS.UI.CRAFTING.PROTOTYPE) or
+            (buffered and STRINGS.UI.CRAFTING.PLACE) or
+            STRINGS.UI.CRAFTING.TABACTION[recipe.tab.str] or
+            STRINGS.UI.CRAFTING.BUILD
+
+        if _G.TheInput:ControllerAttached() then
+            self.button:Hide()
+            self.teaser:Show()
+
+            if can_build then
+                self.teaser:SetScale(TEASER_SCALE_BTN)
+                self.teaser:SetTruncatedString(
+                    _G.TheInput:GetLocalizedControl(_G.TheInput:GetControllerID(), CONTROL_ACCEPT) .. " " .. buttonstr,
+                    TEASER_BTN_WIDTH,
+                    26,
+                    true
+                )
+            else
+                self.teaser:SetScale(TEASER_SCALE_TEXT)
+                self.teaser:SetMultilineTruncatedString(STRINGS.UI.CRAFTING.NEEDSTUFF, 3, TEASER_TEXT_WIDTH, 38, true)
+            end
+        else
+            self.button:Show()
+            if self.skins_spinner ~= nil then
+                self.button:SetPosition(320, -155, 0)
+            else
+                self.button:SetPosition(320, -105, 0)
+            end
+            self.button:SetScale(1, 1, 1)
+
+            self.button:SetText(buttonstr)
+            if can_build then
+                self.button:Enable()
+            else
+                self.button:Disable()
+            end
+        end
+    end
+
+    if showamulet then
+        self.amulet:Show()
+    else
+        self.amulet:Hide()
+    end
+
+    -- update new tags
+    if self.skins_spinner then
+        self.skins_spinner.spinner:Changed()
+    end
+
+    highlight(validChests)
+end
+
+function CraftSlot:OnLoseFocus()
+    CraftSlot._base.OnLoseFocus(self)
+    unhighlight()
+    self:Close()
+end
 
 -- AddClassPostConstruct("widgets/tabgroup", function(self)
 --     local __TabGroup_DeselectAll = self.DeselectAll
