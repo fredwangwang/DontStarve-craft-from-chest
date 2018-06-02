@@ -389,7 +389,7 @@ function Builder:RemoveIngredients(ingredients, recname)
             --         Removal of sanity is actually managed by the entity that is created.
             --         See maxwell's pet leash on spawn and pet on death functions for examples.
             --     --]]
-            -- end
+            end
         end
     end
     self.inst:PushEvent("consumeingredients")
@@ -427,8 +427,9 @@ local function GetHintTextForRecipe(player, recipe)
             return validmachines[1].TREE
         end
 
-        --There's more than one machine that gives the valid tech level! We have to find the "lowest" one (taking bonus into account).
-        for k, v in pairs(validmachines) do
+        --There's more than one machine that gives the valid tech level!
+        --We have to find the "lowest" one (taking bonus into account).
+        for _, v in pairs(validmachines) do
             for rk, rv in pairs(adjusted_level) do
                 if _G.TUNING.PROTOTYPER_TREES[v.TREE][rk] == rv then
                     v.SCORE = v.SCORE + 1
@@ -470,7 +471,7 @@ local function GetHintTextForRecipe(player, recipe)
 end
 
 function RecipePopup:Refresh()
-    debugPrint("calling RecipePopup:Refresh for " .. self.recipe.name)
+    debugPrint("calling RecipePopup:Refresh")
     validChests = {}
 
     local STRINGS = _G.STRINGS
@@ -581,28 +582,26 @@ function RecipePopup:Refresh()
         local _, num_found_inv = inventory_replica:Has(v.type, need)
         local _, num_found_chest, valid_chests_for_ingredient = findFromNearbyChests(owner, v.type)
         local total = num_found_chest + num_found_inv
-
         -- local has, num_found =
         --     inventory_replica:Has(v.type, _G.RoundBiasedUp(v.amount * builder_replica:IngredientMod()))
-
         -- merge tables
         for _, v1 in ipairs(valid_chests_for_ingredient) do
             table.insert(validChests, v1)
         end
 
-        local ing =
-            self.contents:AddChild(
+        local ingredientUI =
             IngredientUI(
-                v.atlas,
-                v.type .. ".tex",
-                need,
-                total,
-                total >= need,
-                STRINGS.NAMES[string.upper(v.type)],
-                owner,
-                v.type
-            )
+            v.atlas,
+            v.type .. ".tex",
+            need,
+            total,
+            total >= need,
+            STRINGS.NAMES[string.upper(v.type)],
+            owner,
+            v.type
         )
+        ingredientUI.quant:SetString(string.format("All:%d/%d\n(Inv:%d)", total, need, num_found_inv))
+        local ing = self.contents:AddChild(ingredientUI)
         if num > 1 and #self.ing > 0 then
             offset = offset + half_div
         end
