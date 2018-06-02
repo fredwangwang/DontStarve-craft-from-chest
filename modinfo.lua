@@ -1,4 +1,4 @@
-name = 'Craft from chest'
+name = 'Craft from chest DST'
 description = 'When crafting items, ingredients are automatically obtained from nearby containers. No manually searching for necessary items anymore! '
 author = 'fredwangwang'
 version = '1.1.0'
