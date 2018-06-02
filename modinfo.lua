@@ -10,8 +10,8 @@ dont_starve_compatible = true
 reign_of_giants_compatible = true
 shipwrecked_compatible = true
 dst_compatible = true
-all_clients_require_mod = true
-client_only_mod = false
+all_clients_require_mod = false
+client_only_mod = true
 server_filter_tags = {}
 
 icon_atlas = "modicon.xml"
