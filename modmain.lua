@@ -17,7 +17,7 @@ local TabGroup = _G.require "widgets/tabgroup"
 local CraftSlot = _G.require "widgets/craftslot"
 
 local highlit = {}
- -- tracking what is highlighted
+-- tracking what is highlighted
 local consumedChests = {}
 local nearbyChests = {}
 local validChests = {}
@@ -32,11 +32,11 @@ end
 
 local function debugPrint(...)
     local arg = {...}
-    if DeBuG then
+    -- if DeBuG then
         for k, v in pairs(arg) do
             print(v)
         end
-    end
+    -- end
 end
 
 local function unhighlight(highlit)
@@ -125,9 +125,9 @@ local function removeFromNearbyChests(player, item, amt)
     debugPrint("removeFromNearbyChests", player, item, amt)
 
     consumedChests = {}
-     -- clear consumed chests
+    -- clear consumed chests
     local chests = getNearbyChest(player, range + 3)
-     -- extend the range a little bit, avoid error caused by slight player movement
+    -- extend the range a little bit, avoid error caused by slight player movement
     local numItemsFound = 0
     for k, v in pairs(chests) do
         local container = v.components.container
@@ -284,37 +284,43 @@ end
 --     end
 --     return false
 -- end
--- Builder_replica.Canbuild = function (recipename)
---     if self.inst.components.builder ~= nil then
---         print("calling inst.components.builder:canbuild")
---         return self.inst.components.builder:CanBuild(recipename)
---     elseif self.classified ~= nil then
---         print("calling this is classified:canbuild")
---         local recipe = _G.GetValidRecipe(recipename)
---         if recipe == nil then
---             return false
---         elseif not self.classified.isfreebuildmode:value() then
---             for i, v in ipairs(recipe.ingredients) do
---                 if not self.inst.replica.inventory:Has(v.type, math.max(1, _G.RoundBiasedUp(v.amount * self:IngredientMod()))) then
---                     return false
---                 end
---             end
---         end
---         for i, v in ipairs(recipe.character_ingredients) do
---             if not self:HasCharacterIngredient(v) then
---                 return false
---             end
---         end
---         for i, v in ipairs(recipe.tech_ingredients) do
---             if not self:HasTechIngredient(v) then
---                 return false
---             end
---         end
---         return true
---     else
---         return false
---     end
--- end
+Builder_replica.Canbuild = function(recipename)
+    debugPrint("calling Builder_replica:Canbuild("..recipename..")")
+    if self.inst.components.builder ~= nil then
+        debugPrint("calling inst.components.builder:canbuild")
+        return self.inst.components.builder:CanBuild(recipename)
+    elseif self.classified ~= nil then
+        debugPrint("calling this is classified:canbuild")
+        local recipe = _G.GetValidRecipe(recipename)
+        if recipe == nil then
+            return false
+        elseif not self.classified.isfreebuildmode:value() then
+            for i, v in ipairs(recipe.ingredients) do
+                if
+                    not self.inst.replica.inventory:Has(
+                        v.type,
+                        math.max(1, _G.RoundBiasedUp(v.amount * self:IngredientMod()))
+                    )
+                 then
+                    return false
+                end
+            end
+        end
+        for i, v in ipairs(recipe.character_ingredients) do
+            if not self:HasCharacterIngredient(v) then
+                return false
+            end
+        end
+        for i, v in ipairs(recipe.tech_ingredients) do
+            if not self:HasTechIngredient(v) then
+                return false
+            end
+        end
+        return true
+    else
+        return false
+    end
+end
 
 -- to keep updating the number of chests as the player move around
 function Builder:OnUpdate(dt)
@@ -525,3 +531,11 @@ end
 --     unhighlight(highlit)
 --     self:Close()
 -- end
+
+-- AddClassPostConstruct("widgets/tabgroup", function(self)
+--     local __TabGroup_DeselectAll = self.DeselectAll
+--     function self:DeselectAll(...)
+--       DoHighlightStuff(GLOBAL.ThePlayer,nil,"CraftingClose",true,false)
+--       return __TabGroup_DeselectAll(self, ...)
+--     end
+-- end)
