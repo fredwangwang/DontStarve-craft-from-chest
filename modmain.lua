@@ -15,7 +15,7 @@ local CraftSlot = _G.require "widgets/craftslot"
 -- tracking what is highlighted
 local highlit = {}
 
-local consumedChests = {}
+-- local consumedChests = {}
 local validChests = {}
 
 local TEASER_SCALE_TEXT = 1
@@ -116,67 +116,67 @@ local function findFromNearbyChests(player, item)
 end
 
 -- return: whether it is enough to fullfill the amt requirement, and the amt not fulfilled.
-local function removeFromNearbyChests(player, item, amt)
-    if not (player and item and amt ~= nil) then
-        debugPrint("removeFromNearbyChests: player | item | amt missing!")
-        return false, amt
-    end
-    debugPrint("removeFromNearbyChests", player, item, amt)
+-- local function removeFromNearbyChests(player, item, amt)
+--     if not (player and item and amt ~= nil) then
+--         debugPrint("removeFromNearbyChests: player | item | amt missing!")
+--         return false, amt
+--     end
+--     debugPrint("removeFromNearbyChests", player, item, amt)
 
-    consumedChests = {}
-    -- clear consumed chests
-    local chests = getNearbyChest(player, range + 3)
-    -- extend the range a little bit, avoid error caused by slight player movement
-    local numItemsFound = 0
-    for _, v in ipairs(chests) do
-        local container = v.components.container
-        local found, num_found = container:Has(item, 1)
-        if found then
-            numItemsFound = numItemsFound + num_found
-            table.insert(consumedChests, v)
-            if (amt > num_found) then -- not enough
-                container:ConsumeByName(item, num_found)
-                amt = amt - num_found
-            else
-                container:ConsumeByName(item, amt)
-                amt = 0
-                break
-            end
-        end
-    end
-    debugPrint("Found " .. numItemsFound .. " " .. item .. " from " .. #consumedChests .. " chests")
-    if amt == 0 then
-        return true, 0
-    else
-        return false, amt
-    end
-end
+--     consumedChests = {}
+--     -- clear consumed chests
+--     local chests = getNearbyChest(player, range + 3)
+--     -- extend the range a little bit, avoid error caused by slight player movement
+--     local numItemsFound = 0
+--     for _, v in ipairs(chests) do
+--         local container = v.components.container
+--         local found, num_found = container:Has(item, 1)
+--         if found then
+--             numItemsFound = numItemsFound + num_found
+--             table.insert(consumedChests, v)
+--             if (amt > num_found) then -- not enough
+--                 container:ConsumeByName(item, num_found)
+--                 amt = amt - num_found
+--             else
+--                 container:ConsumeByName(item, amt)
+--                 amt = 0
+--                 break
+--             end
+--         end
+--     end
+--     debugPrint("Found " .. numItemsFound .. " " .. item .. " from " .. #consumedChests .. " chests")
+--     if amt == 0 then
+--         return true, 0
+--     else
+--         return false, amt
+--     end
+-- end
 
-local function playerConsumeByName(player, item, amt)
-    if not (player and item and amt) then
-        return false
-    end
-    local inventory = player.components.inventory
-    if inv_first then
-        local _, num_in_inv = inventory:Has(item, 1)
-        if amt <= num_in_inv then
-            -- there are more resources available in inv then needed
-            inventory:ConsumeByName(item, amt)
-            return true
-        end
-        inventory:ConsumeByName(item, num_in_inv)
-        amt = amt - num_in_inv
-        debugPrint("Found " .. num_in_inv .. " in inventory, take " .. amt .. "from chests")
-        removeFromNearbyChests(player, item, amt)
-        return true
-    else
-        local done, remain = removeFromNearbyChests(player, item, amt)
-        if not done then
-            inventory:ConsumeByName(item, remain)
-        end
-        return true
-    end
-end
+-- local function playerConsumeByName(player, item, amt)
+--     if not (player and item and amt) then
+--         return false
+--     end
+--     local inventory = player.components.inventory
+--     if inv_first then
+--         local _, num_in_inv = inventory:Has(item, 1)
+--         if amt <= num_in_inv then
+--             -- there are more resources available in inv then needed
+--             inventory:ConsumeByName(item, amt)
+--             return true
+--         end
+--         inventory:ConsumeByName(item, num_in_inv)
+--         amt = amt - num_in_inv
+--         debugPrint("Found " .. num_in_inv .. " in inventory, take " .. amt .. "from chests")
+--         removeFromNearbyChests(player, item, amt)
+--         return true
+--     else
+--         local done, remain = removeFromNearbyChests(player, item, amt)
+--         if not done then
+--             inventory:ConsumeByName(item, remain)
+--         end
+--         return true
+--     end
+-- end
 
 local function playerGetByName(player, item, amt)
     debugPrint("playerGetByName " .. item)
