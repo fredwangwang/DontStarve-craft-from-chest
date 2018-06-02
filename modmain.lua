@@ -256,35 +256,19 @@ end
 -- override original function
 -- Support DS, RoG. SW not tested
 -- to unhighlight chest when tabgroup are deselected
--- function TabGroup:DeselectAll(...)
---     for k, v in ipairs(self.tabs) do v:Deselect() end
---     unhighlight(highlit)
--- end
-
+function TabGroup:DeselectAll()
+    for _, v in ipairs(self.tabs) do
+        v:Deselect()
+    end
+    self.selected = nil
+    unhighlight(highlit)
+end
 ----------------------------------------------------------
 ---------------Override Builder functions (DS, RoG)-------
 -- to test if canbuild with the material from chest
--- function Builder:CanBuild(recname)
---     if self.freebuildmode then return true end
-
---     local player = self.inst
---     local chests = getNearbyChest(player)
---     local recipe = _G.GetRecipe(recname)
---     if recipe then
---         for ik, iv in pairs(recipe.ingredients) do
---             local amt = math.max(1, _G.RoundUp(iv.amount * self.ingredientmod))
---             found, num_found = findFromChests(chests, iv.type)
---             has, num_hold = player.components.inventory:Has(iv.type, amt)
---             if (amt > num_found + num_hold) then
---                 return false
---             end
---         end
---         return true
---     end
---     return false
--- end
-Builder_replica.Canbuild = function(recipename)
-    debugPrint("calling Builder_replica:Canbuild(" .. recipename .. ")")
+-- TODO: this fucking thing is broken
+function Builder_replica:Canbuild(recipename)
+    debugPrint("calling Builder_replica:Canbuild")
     if self.inst.components.builder ~= nil then
         debugPrint("calling inst.components.builder:canbuild")
         return self.inst.components.builder:CanBuild(recipename)
@@ -321,6 +305,35 @@ Builder_replica.Canbuild = function(recipename)
     end
 end
 
+function Builder:CanBuild(recname)
+    local recipe = _G.GetValidRecipe(recname)
+    if recipe == nil then
+        return false
+    elseif not self.freebuildmode then
+        local player = self.inst
+        local chests = getNearbyChest(player)
+        for _, v in ipairs(recipe.ingredients) do
+            local amt = math.max(1, _G.RoundBiasedUp(v.amount * self.ingredientmod))
+            local _, num_found = findFromChests(chests, v.type)
+            local _, num_hold = player.components.inventory:Has(v.type, 1)
+            if (amt > num_found + num_hold) then
+                return false
+            end
+        end
+    end
+    for _, v in ipairs(recipe.character_ingredients) do
+        if not self:HasCharacterIngredient(v) then
+            return false
+        end
+    end
+    for _, v in ipairs(recipe.tech_ingredients) do
+        if not self:HasTechIngredient(v) then
+            return false
+        end
+    end
+    return true
+end
+
 -- to keep updating the number of chests as the player move around
 function Builder:OnUpdate(dt)
     compareValidChests(self.inst)
@@ -330,52 +343,56 @@ function Builder:OnUpdate(dt)
     end
 end
 
--- This function is for RoG, base game doesn't have this function'
--- function Builder:GetIngredients(recname)
---     debugPrint('Custom Builder:GetIngredients: ' .. recname)
---     local recipe = _G.GetRecipe(recname)
---     if recipe then
---         local ingredients = {}
---         for k, v in pairs(recipe.ingredients) do
---             local amt = math.max(1, _G.RoundUp(v.amount * self.ingredientmod))
---             -- local items = self.inst.components.inventory:GetItemByName(v.type, amt)
---             local items = playerGetByName(self.inst, v.type, amt)
---             ingredients[v.type] = items
---         end
---         return ingredients
---     end
--- end
+function Builder:GetIngredients(recname)
+    debugPrint("calling GetIngredients(" .. recname .. ")")
+    local recipe = _G.AllRecipes[recname]
+    if recipe then
+        local ingredients = {}
+        for _, v in ipairs(recipe.ingredients) do
+            local amt = math.max(1, _G.RoundBiasedUp(v.amount * self.ingredientmod))
+            -- local items = self.inst.components.inventory:GetItemByName(v.type, amt)
+            local items = playerGetByName(self.inst, v.type, amt)
+            ingredients[v.type] = items
+        end
+        return ingredients
+    end
+end
 
--- to take ingredients from both inv and chests
--- function Builder:RemoveIngredients(recname_or_ingre)
---     if not isTable(recname_or_ingre) then -- param is a recname, which is base game
---         local recipe = _G.GetRecipe(recname_or_ingre)
---         self.inst:PushEvent("consumeingredients", {recipe = recipe})
---         if recipe then
---             for k, v in pairs(recipe.ingredients) do
---                 local amt = math.max(1, _G.RoundUp(v.amount * self.ingredientmod))
---                 playerConsumeByName(self.inst, v.type, amt)
---             end
---         end
---     else
---         -- this is RoG version of removeIngredients
---         -- RoG uses another function: getingredients to load all ingredients, so this part
---         -- does not require a lot modification
---         debugPrint('RoG Ver Builder:RemoveIngredients')
---         for item, ents in pairs(recname_or_ingre) do
---             for k, v in pairs(ents) do
---                 for i = 1, v do
---                     -- TODO: change this line
---                     -- Now it can successfully deduct the number of items, but if the item is in
---                     -- the chest, it will not pushevent: "loseitem". Although I didn't see a major
---                     -- effect on that, but better to add it back
---                     self.inst.components.inventory:RemoveItem(k, false):Remove()
---                 end
---             end
---         end
---         self.inst:PushEvent("consumeingredients")
---     end
--- end
+function Builder:RemoveIngredients(ingredients, recname)
+    for _, ents in pairs(ingredients) do
+        for k, v in pairs(ents) do
+            for _ = 1, v do
+                self.inst.components.inventory:RemoveItem(k, false):Remove()
+            end
+        end
+    end
+
+    local recipe = _G.AllRecipes[recname]
+    if recipe then
+        local CHARACTER_INGREDIENT = _G.CHARACTER_INGREDIENT
+        for _, v in ipairs(recipe.character_ingredients) do
+            if v.type == CHARACTER_INGREDIENT.HEALTH then
+                --Don't die from crafting!
+                local delta = math.min(math.max(0, self.inst.components.health.currenthealth - 1), v.amount)
+                self.inst:PushEvent("consumehealthcost")
+                self.inst.components.health:DoDelta(-delta, false, "builder", true, nil, true)
+            elseif v.type == CHARACTER_INGREDIENT.MAX_HEALTH then
+                self.inst:PushEvent("consumehealthcost")
+                self.inst.components.health:DeltaPenalty(v.amount)
+            elseif v.type == CHARACTER_INGREDIENT.SANITY then
+                self.inst.components.sanity:DoDelta(-v.amount)
+            elseif v.type == CHARACTER_INGREDIENT.MAX_SANITY then
+            --[[
+                    Because we don't have any maxsanity restoring items we want to be more careful
+                    with how we remove max sanity. Because of that, this is not handled here.
+                    Removal of sanity is actually managed by the entity that is created.
+                    See maxwell's pet leash on spawn and pet on death functions for examples.
+                --]]
+            end
+        end
+    end
+    self.inst:PushEvent("consumeingredients")
+end
 ----------------------------------------------------------
 ---------------End Override Builder functions-------------
 -- function RecipePopup:Refresh()
