@@ -33,9 +33,9 @@ end
 local function debugPrint(...)
     local arg = {...}
     -- if DeBuG then
-        for k, v in pairs(arg) do
-            print(v)
-        end
+    for k, v in pairs(arg) do
+        print(v)
+    end
     -- end
 end
 
@@ -49,7 +49,7 @@ local function unhighlight(highlit)
 end
 
 local function highlight(insts, highlit)
-    for k, v in pairs(insts) do
+    for _, v in ipairs(insts) do
         if not v.components.highlight then
             v:AddComponent("highlight")
         end
@@ -63,9 +63,8 @@ end
 -- given the list of instances, return the list of instances of chest
 local function filterChest(inst)
     local chest = {}
-    for k, v in pairs(inst) do
+    for _, v in ipairs(inst) do
         if (v and v.components.container and v.components.container.type) then
-            -- as cooker and backpack are considered as containers as well
             -- regex to match ['chest', 'chester']
             if string.find(v.components.container.type, "chest") ~= nil then
                 table.insert(chest, v)
@@ -97,7 +96,7 @@ local function findFromChests(chests, item)
     local total = 0
     local contains = false
 
-    for k, v in pairs(chests) do
+    for _, v in ipairs(chests) do
         local found, n = v.components.container:Has(item, 1)
         if found then
             contains = true
@@ -129,9 +128,9 @@ local function removeFromNearbyChests(player, item, amt)
     local chests = getNearbyChest(player, range + 3)
     -- extend the range a little bit, avoid error caused by slight player movement
     local numItemsFound = 0
-    for k, v in pairs(chests) do
+    for _, v in ipairs(chests) do
         local container = v.components.container
-        found, num_found = container:Has(item, 1)
+        local found, num_found = container:Has(item, 1)
         if found then
             numItemsFound = numItemsFound + num_found
             table.insert(consumedChests, v)
@@ -159,7 +158,7 @@ local function playerConsumeByName(player, item, amt)
     end
     local inventory = player.components.inventory
     if inv_first then
-        found_inv, num_in_inv = inventory:Has(item, 1)
+        local _, num_in_inv = inventory:Has(item, 1)
         if amt <= num_in_inv then
             -- there are more resources available in inv then needed
             inventory:ConsumeByName(item, amt)
@@ -171,7 +170,7 @@ local function playerConsumeByName(player, item, amt)
         removeFromNearbyChests(player, item, amt)
         return true
     else
-        done, remain = removeFromNearbyChests(player, item, amt)
+        local done, remain = removeFromNearbyChests(player, item, amt)
         if not done then
             inventory:ConsumeByName(item, remain)
         end
@@ -199,7 +198,7 @@ local function playerGetByName(player, item, amt)
     end
 
     local function tryGetFromContainer(volume)
-        found, num = volume:Has(item, 1)
+        local found, num = volume:Has(item, 1)
         if found then
             if num >= amt then -- there is more than necessary
                 addToItems(volume:GetItemByName(item, amt))
@@ -221,14 +220,14 @@ local function playerGetByName(player, item, amt)
         if tryGetFromContainer(inventory) then
             return items
         end
-        for k, v in pairs(chests) do
+        for _, v in ipairs(chests) do
             local container = v.components.container
             if tryGetFromContainer(container) then
                 return items
             end
         end
     else -- get ingredients from chests first
-        for k, v in pairs(chests) do
+        for _, v in ipairs(chests) do
             local container = v.components.container
             if tryGetFromContainer(container) then
                 return items
@@ -285,7 +284,7 @@ end
 --     return false
 -- end
 Builder_replica.Canbuild = function(recipename)
-    debugPrint("calling Builder_replica:Canbuild("..recipename..")")
+    debugPrint("calling Builder_replica:Canbuild(" .. recipename .. ")")
     if self.inst.components.builder ~= nil then
         debugPrint("calling inst.components.builder:canbuild")
         return self.inst.components.builder:CanBuild(recipename)
